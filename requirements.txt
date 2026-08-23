@@ -1,0 +1,11 @@
+# Pinned to versions this project is actually tested against (Aug 2026).
+# mcp is pinned to the 1.x line deliberately: mcp 2.0.0 (released around
+# the same time this was built) restructured the API significantly
+# (FastMCP moved/changed) and most of the ecosystem -- including
+# langchain-mcp-adapters -- still targets 1.x patterns as of this writing.
+mcp==1.29.0
+langgraph==1.2.10
+langchain-mcp-adapters==0.3.2
+langchain==1.3.14
+langchain-openai==1.4.2
+langchain-core==1.5.3
