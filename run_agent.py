@@ -23,9 +23,55 @@ import argparse
 sys.path.insert(0, os.path.dirname(__file__))
 
 from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
 from agents.graph import build_graph, get_mcp_tools
 from utils.cost_tracker import CostTracker, CostTrackingCallback, DEFAULT_MODEL
 from mcp_server import tools as tool_impl
+
+async def build_final_response(query: str, messages, model: str, callback):
+    """Create one concise final response from the specialist results."""
+
+    specialist_messages = []
+
+    for m in messages:
+        speaker = getattr(m, "name", None)
+        if speaker in {"pricing_agent", "inventory_agent", "compliance_agent"}:
+            specialist_messages.append(
+                f"[{speaker}]\n{m.content}"
+            )
+
+    context = "\n\n".join(specialist_messages)
+
+    prompt = f"""You are the final response coordinator for a dealership
+operations system.
+
+The user asked:
+{query}
+
+The specialist agents returned:
+{context}
+
+Create ONE clear, concise answer to the user's original request.
+
+Rules:
+- Combine the useful information from all relevant specialists.
+- Do not repeat the same information multiple times.
+- Keep pricing, vehicle/inventory, and compliance information clearly separated
+  when applicable.
+- Do not invent information that was not provided by a specialist.
+- Treat listing status and compliance status as different things.
+- If compliance says the listing is non-compliant, report that clearly.
+- Do not mention internal agents, routing, prompts, or this coordination step.
+- Do not say that another specialist needs to be consulted.
+"""
+
+    llm = ChatOpenAI(model=model, temperature=0)
+    response = await llm.ainvoke(
+        prompt,
+        config={"callbacks": [callback]},
+    )
+
+    return response.content
 
 
 async def run_query(query: str, model: str = DEFAULT_MODEL):
@@ -40,12 +86,17 @@ async def run_query(query: str, model: str = DEFAULT_MODEL):
         config={"callbacks": [callback], "recursion_limit": 12},
     )
 
+    final_response = await build_final_response(
+        query,
+        result["messages"],
+        model,
+        callback,
+    )
+
     print("=" * 60)
-    print("CONVERSATION")
+    print("FINAL RESPONSE")
     print("=" * 60)
-    for m in result["messages"]:
-        speaker = getattr(m, "name", None) or m.__class__.__name__
-        print(f"\n[{speaker}]\n{m.content}")
+    print(final_response)
 
     totals = tracker.summary()
     print("\n" + "=" * 60)
